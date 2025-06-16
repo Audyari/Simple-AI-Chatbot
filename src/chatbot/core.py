@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from colorama import Fore, Style, init
 from .config import Config
 from .storage import ChatHistory
+import datetime
 
 # Inisialisasi colorama
 init(autoreset=True)
@@ -91,12 +92,48 @@ class Chatbot:
             print(f"{Fore.RED}Gagal memuat chat: {str(e)}{Style.RESET_ALL}")
             return False
     
+    def export_chat(self, format_type: str = 'txt') -> str:
+        """
+        Ekspor chat saat ini ke format yang ditentukan.
+        
+        Args:
+            format_type: Format ekspor ('txt' atau 'pdf')
+            
+        Returns:
+            Path ke file yang diekspor
+        """
+        if not self.messages:
+            print(f"{Fore.YELLOW}Tidak ada pesan untuk diekspor{Style.RESET_ALL}")
+            return ""
+            
+        try:
+            session_name = f"Chat Export - {datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            if format_type.lower() == 'txt':
+                filepath = self.history.export_to_txt(self.messages, session_name)
+                print(f"{Fore.GREEN}Chat berhasil diekspor ke TXT: {filepath}{Style.RESET_ALL}")
+            elif format_type.lower() == 'pdf':
+                filepath = self.history.export_to_pdf(self.messages, session_name)
+                print(f"{Fore.GREEN}Chat berhasil diekspor ke PDF: {filepath}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}Format tidak didukung. Gunakan 'txt' atau 'pdf'.{Style.RESET_ALL}")
+                return ""
+                
+            return filepath
+            
+        except Exception as e:
+            print(f"{Fore.RED}Gagal mengekspor chat: {str(e)}{Style.RESET_ALL}")
+            return ""
+    
     def chat_loop(self):
         """Loop chat interaktif."""
         print(f"\n{Fore.CYAN}=== Selamat datang di AI Assistant ==={Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Ketik 'keluar' atau 'quit' untuk mengakhiri.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Ketik 'simpan' untuk menyimpan chat.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Ketik 'daftar' untuk melihat sesi yang tersimpan.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Perintah yang tersedia:{Style.RESET_ALL}")
+        print(f"- {Fore.GREEN}keluar/quit{Style.RESET_ALL} - Keluar dari aplikasi")
+        print(f"- {Fore.GREEN}simpan{Style.RESET_ALL} - Simpan chat ke file")
+        print(f"- {Fore.GREEN}daftar{Style.RESET_ALL} - Lihat daftar sesi tersimpan")
+        print(f"- {Fore.GREEN}export txt{Style.RESET_ALL} - Ekspor chat ke file teks")
+        print(f"- {Fore.GREEN}export pdf{Style.RESET_ALL} - Ekspor chat ke file PDF")
         
         while True:
             try:
@@ -115,7 +152,6 @@ class Chatbot:
                 elif user_input.lower() == 'simpan':
                     session_name = input("Nama sesi (kosongkan untuk default): ")
                     self.save_chat_session(session_name or None)
-                    continue
                     
                 elif user_input.lower() == 'daftar':
                     sessions = self.list_saved_sessions()
@@ -133,22 +169,30 @@ class Chatbot:
                         if load.isdigit() and 1 <= int(load) <= len(sessions):
                             if self.load_chat_session(sessions[int(load)-1]['filepath']):
                                 print(f"{Fore.GREEN}Berhasil memuat sesi.{Style.RESET_ALL}")
-                    continue
                 
-                # Lewati input kosong
-                if not user_input.strip():
-                    continue
+                elif user_input.lower().startswith('export '):
+                    export_cmd = user_input.split()
+                    if len(export_cmd) > 1 and export_cmd[1].lower() in ['txt', 'pdf']:
+                        self.export_chat(export_cmd[1])
+                    else:
+                        print(f"{Fore.YELLOW}Format ekspor tidak valid. Gunakan 'export txt' atau 'export pdf'.{Style.RESET_ALL}")
                 
-                # Tambahkan pesan user ke riwayat
-                self.messages.append({"role": "user", "content": user_input})
-                
-                # Dapatkan dan tampilkan respons
-                print(f"{Fore.YELLOW}Memproses...{Style.RESET_ALL}")
-                response = self.get_response(user_input)
-                print(f"\n{Fore.GREEN}Asisten: {Style.RESET_ALL}{response}")
-                
-                # Tambahkan respons ke riwayat
-                self.messages.append({"role": "assistant", "content": response})
+                # Jika bukan perintah khusus, anggap sebagai pesan chat
+                else:
+                    # Lewati input kosong
+                    if not user_input.strip():
+                        continue
+                    
+                    # Tambahkan pesan user ke riwayat
+                    self.messages.append({"role": "user", "content": user_input})
+                    
+                    # Dapatkan dan tampilkan respons
+                    print(f"{Fore.YELLOW}Memproses...{Style.RESET_ALL}")
+                    response = self.get_response(user_input)
+                    print(f"\n{Fore.GREEN}Asisten: {Style.RESET_ALL}{response}")
+                    
+                    # Tambahkan respons ke riwayat
+                    self.messages.append({"role": "assistant", "content": response})
                 
             except KeyboardInterrupt:
                 print(f"\n\n{Fore.RED}Interupsi pengguna. Keluar...{Style.RESET_ALL}")

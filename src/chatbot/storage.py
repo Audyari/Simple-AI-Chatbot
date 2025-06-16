@@ -1,11 +1,12 @@
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from pathlib import Path
+from fpdf import FPDF  # Untuk ekspor PDF
 
 class ChatHistory:
-    """Kelas untuk menangani penyimpanan dan pemuatan riwayat chat."""
+    """Kelas untuk menangani penyimpanan dan ekspor riwayat chat."""
     
     def __init__(self, storage_dir: str = "chat_history"):
         """
@@ -17,10 +18,10 @@ class ChatHistory:
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(exist_ok=True)
     
-    def _get_filename(self) -> str:
+    def _get_filename(self, extension: str = "json") -> str:
         """Membuat nama file berdasarkan timestamp saat ini."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"chat_{timestamp}.json"
+        return f"chat_{timestamp}.{extension}"
     
     def save_chat(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
         """
@@ -42,7 +43,7 @@ class ChatHistory:
             "messages": messages
         }
         
-        filename = self._get_filename()
+        filename = self._get_filename("json")
         filepath = self.storage_dir / filename
         
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -50,16 +51,83 @@ class ChatHistory:
             
         return str(filepath)
     
-    def load_chat(self, filepath: str) -> Dict:
+    def export_to_txt(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
         """
-        Memuat riwayat chat dari file.
+        Ekspor chat ke file teks.
         
         Args:
-            filepath: Path ke file riwayat chat
+            messages: Daftar pesan
+            session_name: Nama sesi
             
         Returns:
-            Data riwayat chat
+            Path ke file TXT yang dihasilkan
         """
+        if not messages:
+            raise ValueError("Tidak ada pesan untuk diekspor")
+            
+        filename = self._get_filename("txt")
+        filepath = self.storage_dir / filename
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"=== {session_name or 'Chat Export'} ===\n")
+            f.write(f"Dibuat pada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 40 + "\n\n")
+            
+            for msg in messages:
+                role = "Anda" if msg["role"] == "user" else "Asisten"
+                f.write(f"{role}: {msg['content']}\n\n")
+                
+        return str(filepath)
+    
+    def export_to_pdf(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
+        """
+        Ekspor chat ke file PDF.
+        
+        Args:
+            messages: Daftar pesan
+            session_name: Nama sesi
+            
+        Returns:
+            Path ke file PDF yang dihasilkan
+        """
+        if not messages:
+            raise ValueError("Tidak ada pesan untuk diekspor")
+            
+        filename = self._get_filename("pdf")
+        filepath = self.storage_dir / filename
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        
+        # Set font
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(0, 10, session_name or "Chat Export", 0, 1, 'C')
+        
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(0, 8, f"Dibuat pada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1, 'C')
+        pdf.ln(10)
+        
+        # Atur style untuk pesan
+        pdf.set_font("Arial", 'B', 12)
+        
+        for msg in messages:
+            role = "Anda" if msg["role"] == "user" else "Asisten"
+            
+            # Header pesan
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(0, 8, f"{role}:", 0, 1, 'L', 1)
+            
+            # Isi pesan
+            pdf.set_font("Arial", '', 11)
+            pdf.multi_cell(0, 7, msg["content"])
+            pdf.ln(3)
+        
+        pdf.output(str(filepath))
+        return str(filepath)
+    
+    def load_chat(self, filepath: str) -> Dict:
+        """Memuat riwayat chat dari file."""
         filepath = Path(filepath)
         if not filepath.exists():
             raise FileNotFoundError(f"File tidak ditemukan: {filepath}")
@@ -67,27 +135,31 @@ class ChatHistory:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     
-    def list_sessions(self) -> List[Dict]:
+    def list_sessions(self, file_type: str = "json") -> List[Dict]:
         """
         Mendapatkan daftar semua sesi chat yang tersimpan.
         
+        Args:
+            file_type: Jenis file yang akan dicari (json/txt/pdf)
+            
         Returns:
             Daftar dictionary berisi info sesi
         """
         sessions = []
-        for file in self.storage_dir.glob("*.json"):
+        for file in self.storage_dir.glob(f"*.{file_type}"):
             try:
-                with open(file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    sessions.append({
-                        "filepath": str(file),
-                        "session_name": data.get("session_name", "Unnamed"),
-                        "created_at": data.get("created_at", "Unknown"),
-                        "message_count": len(data.get("messages", []))
-                    })
-            except (json.JSONDecodeError, KeyError):
+                file_stat = file.stat()
+                sessions.append({
+                    "filepath": str(file),
+                    "filename": file.name,
+                    "created_at": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                    "size_kb": file_stat.st_size / 1024,
+                    "type": file_type.upper()
+                })
+            except Exception as e:
+                print(f"Error processing {file}: {e}")
                 continue
                 
         # Urutkan berdasarkan waktu pembuatan (terbaru dulu)
-        sessions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        sessions.sort(key=lambda x: x["created_at"], reverse=True)
         return sessions
