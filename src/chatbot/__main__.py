@@ -1,36 +1,24 @@
 #!/usr/bin/env python3
 """
-Simple AI Chatbot - Aplikasi Chatbot dengan Google Gemini API
+Modul utama untuk menjalankan chatbot dari command line.
 """
-
-import os
 import sys
-import argparse
-from colorama import init as colorama_init
+from colorama import Fore, Style, init as init_colorama
 
-# Inisialisasi colorama
-colorama_init(autoreset=True)
+from .core import Chatbot, main as core_main
 
 def main():
     """Fungsi utama untuk menjalankan chatbot."""
+    init_colorama()  # Inisialisasi colorama
+    
     try:
-        from .core import Chatbot
-        from .config import Messages, Theme, Icons
-        
-        # Setup argument parser
-        parser = argparse.ArgumentParser(description='Simple AI Chatbot dengan Google Gemini API')
-        parser.add_argument('--model', type=str, help='Nama model yang akan digunakan')
-        args = parser.parse_args()
-        
-        # Inisialisasi dan jalankan chatbot
-        chatbot = Chatbot(model=args.model)
-        chatbot.chat_loop()
-        
+        # Jalankan fungsi main dari core.py
+        core_main()
     except KeyboardInterrupt:
-        print(f"\n{Theme.WARNING}Program dihentikan oleh pengguna.{Style.RESET_ALL}")
-        sys.exit(0)
+        print(f"\n{Fore.YELLOW}Operasi dibatalkan oleh pengguna.{Style.RESET_ALL}")
+        sys.exit(1)
     except Exception as e:
-        print(f"\n{Theme.ERROR}Terjadi kesalahan: {str(e)}{Style.RESET_ALL}")
+        print(f"\n{Fore.RED}Terjadi kesalahan: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
 if __name__ == "__main__":

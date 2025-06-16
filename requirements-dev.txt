@@ -1,0 +1,23 @@
+# Dependensi pengembangan
+-r requirements.txt
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-mock>=3.10.0
+coverage>=6.0.0
+
+# Linting
+flake8>=4.0.0
+black>=22.0.0
+isort>=5.0.0
+mypy>=0.900
+
+# Type hints
+types-PyYAML
+types-requests
+typing-extensions>=4.0.0
+
+# Dokumentasi
+sphinx>=4.0.0
+sphinx-rtd-theme>=1.0.0

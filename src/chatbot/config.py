@@ -55,7 +55,6 @@ Ketik {Theme.SUCCESS}/bantuan{Style.RESET_ALL} untuk melihat daftar perintah yan
   {Theme.SUCCESS}cari di <file> <kata kunci>{Style.RESET_ALL} - Cari di file tertentu
 
 {Theme.BOLD}Ekspor:{Style.RESET_ALL}
-  {Theme.SUCCESS}export txt{Style.RESET_ALL} - Ekspor chat ke file teks
   {Theme.SUCCESS}export pdf{Style.RESET_ALL} - Ekspor chat ke file PDF
 """
 

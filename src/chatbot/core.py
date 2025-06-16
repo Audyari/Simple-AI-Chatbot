@@ -1,318 +1,279 @@
+from __future__ import annotations
 import os
+import sys
 import time
-import threading
 import json
-from typing import List, Dict, Optional, Union
+import threading
+from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
-from colorama import Fore, Style, init
+from datetime import datetime
+
+import google.generativeai as genai
+from colorama import Fore, Style, init as init_colorama
 
 from .config import Config, Theme, Messages, Icons
 from .storage import ChatHistory
 
-# Inisialisasi colorama
-init(autoreset=True)
-
 class Chatbot:
-    """Kelas utama untuk menangani logika chatbot."""
-    
-    def __init__(self, model: str = None):
+    def __init__(self, model: Optional[str] = None):
+        """Inisialisasi chatbot dengan model yang ditentukan."""
+        init_colorama()
         self.model_name = model or Config.DEFAULT_MODEL
-        self.messages: List[Dict[str, str]] = [
-            {"role": "system", "content": "Anda adalah asisten AI yang ramah dan membantu."}
-        ]
+        self.model = None
         self.chat = None
-        self.history = ChatHistory()
-        self.setup_gemini()
-        self.loading = False
-        self.loading_thread = None
+        self.messages: List[Dict[str, str]] = [
+            {"role": "system", "content": Config.BOT_NAME}
+        ]
+        self.storage = ChatHistory()
+        self._init_model()
     
-    def setup_gemini(self):
-        """Setup Google Gemini API."""
-        import google.generativeai as genai
-        
-        # Validasi konfigurasi
-        Config.validate_config()
-        
-        # Konfigurasi API
-        genai.configure(api_key=Config.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(self.model_name)
-        self.chat = self.model.start_chat(history=[])
-        print(f"{Theme.INFO}Menggunakan model: {self.model_name}{Style.RESET_ALL}")
-    
-    def show_loading(self, message="Memproses..."):
-        """Menampilkan indikator loading dengan animasi."""
-        self.loading = True
-        
-        def animate():
-            chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-            i = 0
-            while self.loading:
-                print(f"\r{Theme.INFO}{chars[i % len(chars)]} {message}", end="")
-                i += 1
-                time.sleep(0.1)
-            # Hapus baris loading
-            print("\r" + " " * (len(message) + 2) + "\r", end="")
-        
-        self.loading_thread = threading.Thread(target=animate)
-        self.loading_thread.daemon = True
-        self.loading_thread.start()
-    
-    def stop_loading(self):
-        """Menghentikan indikator loading."""
-        self.loading = False
-        if self.loading_thread:
-            self.loading_thread.join()
-            self.loading_thread = None
-    
-    def print_header(self, title: str, icon: str = ""):
-        """Mencetak header dengan gaya yang konsisten."""
-        header = f"{Theme.PRIMARY}{Theme.BOLD}=== {icon} {title} ==={Style.RESET_ALL}"
-        print(f"\n{header}")
-    
-    def print_success(self, message: str):
-        """Mencetak pesan sukses."""
-        print(f"{Icons.SUCCESS} {Theme.SUCCESS}{message}{Style.RESET_ALL}")
-    
-    def print_error(self, message: str):
-        """Mencetak pesan error."""
-        print(f"{Icons.ERROR} {Theme.ERROR}{message}{Style.RESET_ALL}")
-    
-    def print_warning(self, message: str):
-        """Mencetak pesan peringatan."""
-        print(f"{Icons.WARNING} {Theme.WARNING}{message}{Style.RESET_ALL}")
-    
-    def print_info(self, message: str):
-        """Mencetak pesan informasi."""
-        print(f"{Icons.INFO} {Theme.INFO}{message}{Style.RESET_ALL}")
-    
-    def confirm_action(self, message: str) -> bool:
-        """Meminta konfirmasi pengguna."""
-        response = input(f"{Theme.WARNING}{message} (y/n): ").strip().lower()
-        return response in ['y', 'ya', 'yes']
-    
-    def get_response(self, user_input: str) -> str:
-        """Mendapatkan respons dari model AI."""
+    def _init_model(self) -> None:
+        """Inisialisasi model Gemini."""
         try:
-            self.show_loading()
-            response = self.chat.send_message(user_input)
-            self.stop_loading()
-            return response.text
+            genai.configure(api_key=Config.GEMINI_API_KEY)
+            self.model = genai.GenerativeModel(self.model_name)
+            self.chat = self.model.start_chat(history=[])
+            print(f"{Theme.SUCCESS}{Icons.SUCCESS} Model {self.model_name} berhasil diinisialisasi{Style.RESET_ALL}")
         except Exception as e:
-            self.print_error(f"Error saat memproses permintaan: {str(e)}")
-            return "Maaf, terjadi kesalahan saat memproses permintaan Anda."
+            print(f"{Theme.ERROR}{Icons.ERROR} Gagal menginisialisasi model: {e}{Style.RESET_ALL}")
+            sys.exit(1)
     
-    def save_chat_session(self, session_name: str = None) -> str:
-        """
-        Menyimpan sesi chat saat ini.
+    def get_response(self, message: str) -> str:
+        """Mendapatkan respons dari model untuk pesan yang diberikan."""
+        if not self.chat:
+            return f"{Theme.ERROR}Error: Model tidak terinisialisasi dengan benar.{Style.RESET_ALL}"
+        
+        try:
+            # Tampilkan indikator loading
+            loading = threading.Thread(target=self._show_loading, args=("Memproses...",))
+            loading.daemon = True
+            self.loading = True
+            loading.start()
+            
+            # Dapatkan respons dari model
+            response = self.chat.send_message(message)
+            
+            # Hentikan loading
+            self.loading = False
+            loading.join(timeout=0.1)
+            
+            return response.text
+            
+        except Exception as e:
+            self.loading = False
+            return f"{Theme.ERROR}Error: Gagal mendapatkan respons dari model: {e}{Style.RESET_ALL}"
+    
+    def _show_loading(self, message: str = "Memproses...") -> None:
+        """Menampilkan indikator loading."""
+        chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        i = 0
+        while getattr(self, 'loading', False):
+            sys.stdout.write(f"\r{Theme.INFO}{chars[i % len(chars)]} {message}{Style.RESET_ALL}")
+            sys.stdout.flush()
+            i += 1
+            time.sleep(0.1)
+        # Hapus baris loading
+        sys.stdout.write("\r" + " " * (len(message) + 2) + "\r")
+        sys.stdout.flush()
+    
+    def save_chat_session(self, session_name: Optional[str] = None) -> str:
+        """Menyimpan sesi chat saat ini ke file."""
+        if not self.messages:
+            raise ValueError("Tidak ada pesan untuk disimpan")
+        
+        try:
+            filepath = self.storage.save_chat(self.messages, session_name)
+            return filepath
+        except Exception as e:
+            raise RuntimeError(f"Gagal menyimpan sesi chat: {e}")
+    
+    def load_chat_session(self, filepath: str) -> str:
+        """Memuat sesi chat dari file."""
+        try:
+            data = self.storage.load_chat(filepath)
+            self.messages = data.get('messages', [])
+            return f"Sesi chat dimuat: {data.get('session_name', 'Tanpa Judul')}"
+        except Exception as e:
+            raise RuntimeError(f"Gagal memuat sesi chat: {e}")
+    
+    def search_chat_history(self, query: str) -> List[Dict[str, Any]]:
+        """Mencari pesan dalam riwayat chat yang disimpan."""
+        return self.storage.search_messages(query)
+    
+    def export_chat(self, format_type: str = 'pdf', session_name: Optional[str] = None) -> str:
+        """Mengekspor chat ke format PDF.
         
         Args:
+            format_type: Format ekspor (hanya 'pdf' yang didukung)
             session_name: Nama sesi (opsional)
             
         Returns:
-            Path ke file yang disimpan
+            str: Path ke file yang diekspor
+            
+        Raises:
+            ValueError: Jika tidak ada pesan untuk diekspor
+            RuntimeError: Jika gagal mengekspor chat
         """
         if not self.messages:
-            self.print_warning("Tidak ada pesan untuk disimpan.")
-            return ""
-            
-        try:
-            filepath = self.history.save_chat(self.messages, session_name)
-            self.print_success(f"Chat disimpan di: {filepath}")
-            return filepath
-        except Exception as e:
-            self.print_error(f"Gagal menyimpan chat: {str(e)}")
-            return ""
-    
-    def load_chat_session(self, filepath: str) -> bool:
-        """
-        Memuat sesi chat dari file.
+            raise ValueError("Tidak ada pesan untuk diekspor")
         
-        Args:
-            filepath: Path ke file yang akan dimuat
-            
-        Returns:
-            True jika berhasil, False jika gagal
-        """
+        format_type = format_type.lower()
+        if format_type != 'pdf':
+            raise ValueError("Hanya format 'pdf' yang didukung untuk ekspor")
+        
         try:
-            data = self.history.load_chat(filepath)
-            self.messages = data.get('messages', [])
-            
-            # Reset chat dengan model baru
-            self.chat = self.model.start_chat(history=[])
-            for msg in self.messages[1:]:  # Lewati pesan sistem
-                self.chat.send_message(msg["content"])
-            return True
+            return self.storage.export_to_pdf(self.messages, session_name)
         except Exception as e:
-            self.print_error(f"Gagal memuat chat: {str(e)}")
-            return False
+            raise RuntimeError(f"Gagal mengekspor chat: {e}")
     
-    def list_saved_sessions(self) -> List[Dict]:
+    def list_saved_sessions(self) -> List[Dict[str, str]]:
         """Mendapatkan daftar sesi yang tersimpan."""
-        return self.history.list_sessions()
-    
-    def export_chat(self, format_type: str = 'txt') -> str:
-        """
-        Mengekspor chat saat ini ke format yang ditentukan.
-        
-        Args:
-            format_type: Format ekspor (txt atau pdf)
-            
-        Returns:
-            Path ke file yang diekspor
-        """
-        if not self.messages:
-            self.print_warning("Tidak ada pesan untuk diekspor.")
-            return ""
-            
-        try:
-            session_name = next((msg['content'] for msg in self.messages if msg['role'] == 'system'), None)
-            
-            if format_type.lower() == 'txt':
-                filepath = self.history.export_to_txt(self.messages, session_name)
-                self.print_success(f"Chat berhasil diekspor ke TXT: {filepath}")
-            elif format_type.lower() == 'pdf':
-                filepath = self.history.export_to_pdf(self.messages, session_name)
-                self.print_success(f"Chat berhasil diekspor ke PDF: {filepath}")
-            else:
-                self.print_error("Format tidak didukung. Gunakan 'txt' atau 'pdf'.")
-                return ""
-                
-            return filepath
-        except Exception as e:
-            self.print_error(f"Gagal mengekspor chat: {str(e)}")
-            return ""
-    
-    def search_chat_history(self, query: str, session_file: str = None, case_sensitive: bool = False) -> List[Dict]:
-        """
-        Mencari pesan dalam riwayat chat.
-        
-        Args:
-            query: Kata kunci pencarian
-            session_file: Nama file sesi (opsional)
-            case_sensitive: Pencarian case-sensitive
-            
-        Returns:
-            List hasil pencarian
-        """
-        if not query:
-            self.print_warning("Masukkan kata kunci pencarian.")
-            return []
-            
-        try:
-            results = self.history.search_messages(
-                query=query,
-                session_file=session_file,
-                case_sensitive=case_sensitive
-            )
-            return results
-            
-        except Exception as e:
-            self.print_error(f"Gagal melakukan pencarian: {str(e)}")
-            return []
-    
-    def chat_loop(self):
-        """Loop chat interaktif."""
-        self.print_header("Selamat datang di AI Assistant", Icons.BOT)
-        self.print_info(Messages.WELCOME)
-        
-        while True:
+        sessions = []
+        for filepath in self.storage.storage_dir.glob('*.json'):
             try:
-                # Tampilkan prompt input
-                user_input = input(f"\n{Theme.PRIMARY}{Icons.USER} Anda: {Style.RESET_ALL}").strip()
-                
-                # Perintah khusus
-                if not user_input:
-                    continue
-                    
-                if user_input.lower() in ['keluar', 'quit', 'exit']:
-                    if self.confirm_action("Apakah Anda yakin ingin keluar?"):
-                        if self.messages and len(self.messages) > 1:  # Lebih dari sekedar pesan sistem
-                            if self.confirm_action("Simpan chat sebelum keluar?"):
-                                self.save_chat_session()
-                        self.print_success("Terima kasih! Sampai jumpa!")
-                        break
-                    continue
-                
-                elif user_input.lower() == 'bantuan':
-                    self.print_info(Messages.HELP)
-                    continue
-                
-                elif user_input.lower() == 'simpan':
-                    session_name = input(f"{Theme.INFO}Nama sesi (kosongkan untuk default): {Style.RESET_ALL}")
-                    self.save_chat_session(session_name or None)
-                    continue
-                    
-                elif user_input.lower() == 'daftar':
-                    sessions = self.list_saved_sessions()
-                    if not sessions:
-                        self.print_warning("Tidak ada sesi yang tersimpan.")
-                    else:
-                        self.print_header("Daftar Sesi Tersimpan")
-                        for i, session in enumerate(sessions, 1):
-                            print(f"{i}. {session.get('session_name', 'Sesi Tanpa Nama')}")
-                            print(f"   Dibuat: {session.get('created_at', 'Tidak Diketahui')}")
-                            print(f"   Jumlah pesan: {session.get('message_count', 0)}")
-                            print(f"   Lokasi: {session.get('filename', 'tidak_terdeteksi.json')}\n")
-                            
-                        load = input("Muat sesi? (nomor/enter untuk batal): ").strip()
-                        if load.isdigit() and 1 <= int(load) <= len(sessions):
-                            if self.load_chat_session(sessions[int(load)-1].get('filepath')):
-                                self.print_success("Berhasil memuat sesi.")
-                
-                elif user_input.lower().startswith('export '):
-                    export_cmd = user_input.split()
-                    if len(export_cmd) == 2 and export_cmd[1].lower() in ['txt', 'pdf']:
-                        self.export_chat(export_cmd[1])
-                    else:
-                        self.print_error("Format ekspor tidak valid. Gunakan 'export txt' atau 'export pdf'")
-                
-                elif user_input.lower().startswith('cari '):
-                    # Parse perintah pencarian
-                    parts = user_input[5:].strip().split()
-                    if len(parts) >= 2 and parts[0].lower() == 'di':
-                        # Format: cari di <file> <kata kunci>
-                        if len(parts) < 3:
-                            self.print_error("Format pencarian tidak valid. Gunakan: cari di <file> <kata kunci>")
-                            continue
-                        session_file = parts[1]
-                        search_query = ' '.join(parts[2:])
-                        results = self.search_chat_history(search_query, session_file)
-                    else:
-                        # Format: cari <kata kunci>
-                        search_query = ' '.join(parts)
-                        results = self.search_chat_history(search_query)
-                    
-                    # Tampilkan hasil pencarian
-                    if not results:
-                        self.print_warning(f"Tidak ditemukan hasil untuk '{search_query}'.")
-                    else:
-                        self.print_header(f"Hasil Pencarian: '{search_query}' ({len(results)} ditemukan)")
-                        for i, result in enumerate(results, 1):
-                            role = "Anda" if result.get('role') == 'user' else "Asisten"
-                            session_name = result.get('session', 'Sesi Tanpa Nama')
-                            self.print_info(f"\n{i}. [{session_name} - {role}]")
-                            self.print_info(f"   {result.get('snippet', 'Tidak ada konten')}")
-                            self.print_info(f"   File: {result.get('session_file', 'tidak_terdeteksi.json')}")
-                
-                # Jika bukan perintah khusus, proses sebagai pesan chat
-                else:
-                    # Lewati input kosong
-                    if not user_input.strip():
-                        continue
-                        
-                    # Tambahkan pesan pengguna ke riwayat
-                    self.messages.append({"role": "user", "content": user_input})
-                    
-                    # Dapatkan dan tampilkan respons
-                    self.print_info("Memproses...")
-                    response = self.get_response(user_input)
-                    self.print_info(f"Asisten: {response}")
-                    
-                    # Tambahkan respons ke riwayat
-                    self.messages.append({"role": "assistant", "content": response})
-                    
-            except KeyboardInterrupt:
-                self.print_warning("Interupsi pengguna. Gunakan 'keluar' untuk keluar dengan benar.")
-            except Exception as e:
-                self.print_error(f"Terjadi kesalahan: {str(e)}")
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    sessions.append({
+                        'name': data.get('session_name', 'Tanpa Judul'),
+                        'filepath': str(filepath),
+                        'created_at': data.get('created_at', 'Tidak Diketahui'),
+                        'message_count': len(data.get('messages', []))
+                    })
+            except (json.JSONDecodeError, KeyError):
                 continue
+        return sessions
+
+def main():
+    """Fungsi utama untuk menjalankan chatbot."""
+    # Validasi konfigurasi
+    try:
+        Config.validate_config()
+    except ValueError as e:
+        print(f"{Theme.ERROR}{Icons.ERROR} {e}{Style.RESET_ALL}")
+        sys.exit(1)
+    
+    # Tampilkan pesan selamat datang
+    print(f"\n{Theme.PRIMARY}{Theme.BOLD}=== {Config.BOT_NAME} ==={Style.RESET_ALL}")
+    print(Messages.WELCOME)
+    
+    # Inisialisasi chatbot
+    bot = Chatbot()
+    
+    while True:
+        try:
+            user_input = input(f"{Theme.PRIMARY}{Icons.USER} {Config.USER_NAME}: {Style.RESET_ALL}").strip()
+            
+            if not user_input:
+                continue
+                
+            if user_input.lower() == 'keluar':
+                # Tawarkan untuk menyimpan sebelum keluar
+                if len(bot.messages) > 1:  # Lebih dari sekedar pesan sistem
+                    save = input(f"{Theme.WARNING}{Icons.WARNING} Simpan chat sebelum keluar? (y/n): {Style.RESET_ALL}").strip().lower()
+                    if save in ('y', 'ya'):
+                        session_name = input(f"{Theme.INFO}Nama sesi (kosongkan untuk nama default): {Style.RESET_ALL}")
+                        try:
+                            filepath = bot.save_chat_session(session_name or None)
+                            print(f"{Theme.SUCCESS}{Icons.SUCCESS} Chat disimpan di: {filepath}{Style.RESET_ALL}")
+                        except Exception as e:
+                            print(f"{Theme.ERROR}{Icons.ERROR} Gagal menyimpan chat: {e}{Style.RESET_ALL}")
+                print(f"\n{Theme.INFO}{Icons.INFO} Sampai jumpa!{Style.RESET_ALL}")
+                break
+                
+            if user_input.lower() == 'bantuan':
+                print(Messages.HELP)
+                continue
+                
+            if user_input.lower() == 'simpan':
+                session_name = input(f"{Theme.INFO}Nama sesi (kosongkan untuk nama default): {Style.RESET_ALL}")
+                try:
+                    filepath = bot.save_chat_session(session_name or None)
+                    print(f"{Theme.SUCCESS}{Icons.SUCCESS} Chat disimpan di: {filepath}{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Theme.ERROR}{Icons.ERROR} Gagal menyimpan chat: {e}{Style.RESET_ALL}")
+                continue
+                
+            if user_input.lower() == 'daftar':
+                sessions = bot.list_saved_sessions()
+                if not sessions:
+                    print(f"{Theme.WARNING}{Icons.INFO} Tidak ada sesi yang tersimpan.{Style.RESET_ALL}")
+                else:
+                    print(f"\n{Theme.PRIMARY}{Theme.BOLD}=== Daftar Sesi Tersimpan ==={Style.RESET_ALL}")
+                    for i, session in enumerate(sessions, 1):
+                        print(f"{Theme.PRIMARY}{i}. {session.get('name', 'Tanpa Judul')}{Style.RESET_ALL}")
+                        print(f"   {Theme.TEXT_SECONDARY}Dibuat: {session.get('created_at', 'Tidak Diketahui')}")
+                        print(f"   {Theme.TEXT_SECONDARY}Jumlah pesan: {session.get('message_count', 0)}")
+                        print(f"   {Theme.TEXT_SECONDARY}Lokasi: {session.get('filepath', 'tidak_terdeteksi.json')}\n{Style.RESET_ALL}")
+                continue
+                
+            if user_input.lower().startswith('muat '):
+                try:
+                    session_num = int(user_input.split()[1])
+                    sessions = bot.list_saved_sessions()
+                    if 1 <= session_num <= len(sessions):
+                        filepath = sessions[session_num-1].get('filepath')
+                        if filepath:
+                            try:
+                                result = bot.load_chat_session(filepath)
+                                print(f"{Theme.SUCCESS}{Icons.SUCCESS} {result}{Style.RESET_ALL}")
+                            except Exception as e:
+                                print(f"{Theme.ERROR}{Icons.ERROR} Gagal memuat sesi: {e}{Style.RESET_ALL}")
+                    else:
+                        print(f"{Theme.ERROR}{Icons.ERROR} Nomor sesi tidak valid.{Style.RESET_ALL}")
+                except (ValueError, IndexError):
+                    print(f"{Theme.ERROR}{Icons.ERROR} Format perintah tidak valid. Gunakan: muat <nomor>{Style.RESET_ALL}")
+                continue
+                
+            if user_input.lower().startswith('export '):
+                export_cmd = user_input.split()
+                if len(export_cmd) == 2 and export_cmd[1].lower() in ['txt', 'pdf']:
+                    try:
+                        filepath = bot.export_chat(export_cmd[1])
+                        print(f"{Theme.SUCCESS}{Icons.SUCCESS} Chat berhasil diekspor ke: {filepath}{Style.RESET_ALL}")
+                    except Exception as e:
+                        print(f"{Theme.ERROR}{Icons.ERROR} Gagal mengekspor chat: {e}{Style.RESET_ALL}")
+                else:
+                    print(f"{Theme.WARNING}{Icons.INFO} Format ekspor tidak valid. Gunakan 'export txt' atau 'export pdf'{Style.RESET_ALL}")
+                continue
+                
+            if user_input.lower().startswith('cari '):
+                search_query = user_input[5:].strip()
+                if not search_query:
+                    print(f"{Theme.WARNING}{Icons.INFO} Masukkan kata kunci pencarian.{Style.RESET_ALL}")
+                    continue
+                    
+                try:
+                    results = bot.search_chat_history(search_query)
+                    if not results:
+                        print(f"{Theme.WARNING}{Icons.INFO} Tidak ditemukan hasil untuk '{search_query}'.{Style.RESET_ALL}")
+                    else:
+                        print(f"\n{Theme.PRIMARY}{Theme.BOLD}=== Hasil Pencarian: '{search_query}' ==={Style.RESET_ALL}")
+                        for i, result in enumerate(results, 1):
+                            role = Config.USER_NAME if result.get('role') == 'user' else Config.BOT_NAME
+                            print(f"\n{Theme.SECONDARY}{i}. [{role}]{Style.RESET_ALL}")
+                            print(f"   {result.get('content', '')}")
+                except Exception as e:
+                    print(f"{Theme.ERROR}{Icons.ERROR} Gagal melakukan pencarian: {e}{Style.RESET_ALL}")
+                continue
+                
+            # Jika bukan perintah khusus, proses sebagai pesan chat
+            if user_input:
+                # Tambahkan pesan pengguna ke riwayat
+                bot.messages.append({"role": "user", "content": user_input})
+                
+                # Dapatkan respons dari model
+                response = bot.get_response(user_input)
+                
+                # Tampilkan respons
+                print(f"\n{Theme.SECONDARY}{Icons.BOT} {Config.BOT_NAME}: {response}{Style.RESET_ALL}")
+                
+                # Tambahkan respons asisten ke riwayat
+                bot.messages.append({"role": "assistant", "content": response})
+                
+        except KeyboardInterrupt:
+            print(f"\n{Theme.WARNING}{Icons.WARNING} Gunakan 'keluar' untuk keluar dengan benar.{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"\n{Theme.ERROR}{Icons.ERROR} Terjadi kesalahan: {e}{Style.RESET_ALL}")
+
+if __name__ == "__main__":
+    main()
