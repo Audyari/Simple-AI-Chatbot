@@ -1,142 +1,99 @@
 # Simple AI Chatbot
 
-Sebuah chatbot sederhana yang menggunakan Google Gemini API dengan kemampuan menyimpan, memuat, mengekspor, dan mencari dalam riwayat percakapan.
+Sebuah chatbot berbasis AI yang menggunakan Google Gemini API dengan antarmuka baris perintah (CLI) yang interaktif.
 
-## 🌟 Fitur
+## 🚀 Fitur
 
-- [x] **Dukungan Google Gemini API**
-  - Menggunakan model `gemini-1.5-flash`
-  - Konfigurasi mudah melalui file `.env`
+- 💬 Obrolan interaktif dengan AI
+- 💾 Simpan dan muat riwayat obrolan
+- 🔍 Pencarian dalam riwayat chat
+- 📁 Ekspor ke format TXT dan PDF
+- 🎨 Antarmuka berwarna dengan emoji
+- ⚡ Indikator loading animasi
 
-- [x] **Manajemen Riwayat Chat**
-  - Menyimpan percakapan ke file JSON
-  - Memuat percakapan yang tersimpan
-  - Memberi nama sesi percakapan
-  - Melihat daftar sesi yang tersimpan
+## 📋 Persyaratan
 
-- [x] **Pencarian Canggih**
-  - Cari pesan dalam seluruh riwayat
-  - Cari dalam sesi tertentu
-  - Tampilkan konteks pesan
-  - Sorot kata kunci yang ditemukan
+- Python 3.8+
+- Kunci API Google Gemini
+- Dependensi yang terdaftar di `requirements.txt`
 
-- [x] **Ekspor Chat**
-  - Ekspor ke format TXT
-  - Ekspor ke format PDF
-  - Format yang rapi dan mudah dibaca
+## 🛠️ Instalasi
 
-## 🚀 Cara Menggunakan
-
-### Perintah yang Tersedia
-- `keluar`/`quit` - Keluar dari aplikasi
-- `simpan` - Menyimpan percakapan saat ini
-- `daftar` - Menampilkan daftar sesi yang tersimpan
-- `export txt` - Ekspor chat ke file teks
-- `export pdf` - Ekspor chat ke file PDF
-- `cari <kata kunci>` - Cari dalam seluruh riwayat chat
-- `cari di <nama file> <kata kunci>` - Cari dalam file tertentu
-
-### Mencari dalam Riwayat
-1. **Cari di semua sesi**:
-   ```
-   cari halo
-   ```
-   Akan mencari kata "halo" di semua file chat.
-
-2. **Cari di sesi tertentu**:
-   ```
-   cari di chat_20250616_103753.json halo
-   ```
-   Hanya mencari di file yang ditentukan.
-
-3. **Hasil pencarian** akan menampilkan:
-   - Nama sesi
-   - Peran pengirim (Anda/Asisten)
-   - Potongan teks yang relevan
-   - Nama file sumber
-
-### Contoh Output Pencarian:
-```
-=== Hasil Pencarian: 'halo' (3 ditemukan) ===
-
-1. [Sesi Chat 1 - Anda]
-   ... ini adalah contoh pesan yang mengandung kata **halo** di dalamnya ...
-   File: chat_20250616_103753.json
-
-2. [Sesi Chat 2 - Asisten]
-   ... Anda mengatakan **halo** tadi, ada yang bisa saya bantu? ...
-   File: chat_20250616_110245.json
-```
-
-## 🔧 Instalasi
-
-1. **Clone repositori**
+1. Clone repositori ini:
    ```bash
    git clone https://github.com/username/simple-ai-chatbot.git
    cd simple-ai-chatbot
    ```
 
-2. **Buat dan aktifkan virtual environment**
+2. Buat environment virtual (disarankan):
    ```bash
-   # Windows
    python -m venv venv
-   .\venv\Scripts\activate
-
-   # MacOS/Linux
-   python3 -m venv venv
-   source venv/bin/activate
+   .\venv\Scripts\activate  # Windows
+   # atau
+   source venv/bin/activate  # Linux/Mac
    ```
 
-3. **Install dependencies**
+3. Install dependensi:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Buat file .env**
-   ```bash
-   cp .env.example .env
-   ```
-   Kemudian edit file `.env` dan tambahkan API key Google Gemini Anda:
-   ```
+4. Buat file `.env` di direktori utama dan tambahkan kunci API Anda:
+   ```env
    GEMINI_API_KEY=your_api_key_here
    DEFAULT_MODEL=gemini-1.5-flash
-   MAX_TOKENS=1000
-   TEMPERATURE=0.7
    ```
 
-5. **Jalankan aplikasi**
-   ```bash
-   python src/main.py
-   ```
+## 🚀 Penggunaan
 
-## 📁 Struktur Proyek
+Jalankan aplikasi:
+```bash
+python -m src.chatbot
+```
+
+### 🎯 Perintah yang Tersedia
+
+| Perintah | Deskripsi |
+|----------|-----------|
+| `bantuan` | Tampilkan pesan bantuan |
+| `simpan [nama]` | Simpan sesi chat saat ini |
+| `daftar` | Tampilkan daftar sesi tersimpan |
+| `muat <nomor>` | Muat sesi tertentu |
+| `cari <kata kunci>` | Cari di semua chat |
+| `cari di <file> <kata kunci>` | Cari di file tertentu |
+| `export txt` | Ekspor chat ke file teks |
+| `export pdf` | Ekspor chat ke file PDF |
+| `keluar` | Keluar dari aplikasi |
+
+## 🏗️ Struktur Proyek
 
 ```
 simple-ai-chatbot/
-├── .env.example         # Template konfigurasi
-├── requirements.txt     # Dependensi
-├── chat_history/        # Folder penyimpanan riwayat chat
-└── src/
-    ├── main.py          # Entry point aplikasi
-    └── chatbot/
-        ├── __init__.py   # Inisialisasi package
-        ├── config.py    # Konfigurasi aplikasi
-        ├── core.py      # Logika utama chatbot
-        └── storage.py   # Manajemen penyimpanan, ekspor, & pencarian
+├── src/
+│   └── chatbot/
+│       ├── __init__.py
+│       ├── __main__.py     # Entry point aplikasi
+│       ├── config.py       # Konfigurasi dan tema
+│       ├── core.py         # Logika utama chatbot
+│       └── storage.py      # Penyimpanan dan manajemen file
+├── .env.example           # Contoh file konfigurasi
+├── .gitignore
+├── README.md
+└── requirements.txt       # Dependensi
 ```
 
 ## 🤝 Berkontribusi
 
-1. Fork repositori
-2. Buat branch fitur (`git checkout -b fitur/namafitur`)
-3. Commit perubahan (`git commit -m 'Menambahkan fitur xyz'`)
-4. Push ke branch (`git push origin fitur/namafitur`)
+1. Fork repositori ini
+2. Buat branch fitur baru
+3. Commit perubahan Anda
+4. Push ke branch
 5. Buat Pull Request
 
-## 📝 Lisensi
+## 📜 Lisensi
 
-Dilisensikan di bawah [MIT License](LICENSE).
+Proyek ini dilisensikan di bawah MIT License - lihat file [LICENSE](LICENSE) untuk detailnya.
 
 ---
 
-Dibuat dengan ❤️ menggunakan Google Gemini API
+Dibuat dengan ❤️ oleh [Nama Anda] - [@username]
