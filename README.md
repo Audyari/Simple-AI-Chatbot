@@ -7,7 +7,7 @@ Sebuah chatbot berbasis AI yang menggunakan Google Gemini API dengan antarmuka b
 - 💬 Obrolan interaktif dengan AI
 - 💾 Simpan dan muat riwayat obrolan
 - 🔍 Pencarian dalam riwayat chat
-- 📁 Ekspor ke format TXT dan PDF
+- � Ekspor ke format PDF
 - 🎨 Antarmuka berwarna dengan emoji
 - ⚡ Indikator loading animasi
 
@@ -61,7 +61,6 @@ python -m src.chatbot
 | `muat <nomor>` | Muat sesi tertentu |
 | `cari <kata kunci>` | Cari di semua chat |
 | `cari di <file> <kata kunci>` | Cari di file tertentu |
-| `export txt` | Ekspor chat ke file teks |
 | `export pdf` | Ekspor chat ke file PDF |
 | `keluar` | Keluar dari aplikasi |
 
@@ -76,10 +75,22 @@ simple-ai-chatbot/
 │       ├── config.py       # Konfigurasi dan tema
 │       ├── core.py         # Logika utama chatbot
 │       └── storage.py      # Penyimpanan dan manajemen file
+├── tests/                  # File-file test
+│   ├── conftest.py        # Konfigurasi pytest
+│   ├── test_core.py       # Test untuk core.py
+│   └── test_storage.py    # Test untuk storage.py
 ├── .env.example           # Contoh file konfigurasi
 ├── .gitignore
+├── pytest.ini            # Konfigurasi pytest
 ├── README.md
 └── requirements.txt       # Dependensi
+```
+
+## 🧪 Menjalankan Test
+
+Untuk menjalankan test:
+```bash
+python -m pytest tests/ -v
 ```
 
 ## 🤝 Berkontribusi
@@ -96,4 +107,4 @@ Proyek ini dilisensikan di bawah MIT License - lihat file [LICENSE](LICENSE) unt
 
 ---
 
-Dibuat dengan ❤️ oleh [Nama Anda] - [@username]
+Dibuat dengan ❤️ oleh [Audyari Wiyono] - [@username]
