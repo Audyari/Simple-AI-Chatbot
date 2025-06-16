@@ -1,0 +1,18 @@
+{
+  "session_name": "Unnamed Session",
+  "created_at": "2025-06-16T10:37:53.148699",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Anda adalah asisten AI yang ramah dan membantu."
+    },
+    {
+      "role": "user",
+      "content": "siapa nama kamu"
+    },
+    {
+      "role": "assistant",
+      "content": "Saya adalah model bahasa besar, yang dilatih oleh Google."
+    }
+  ]
+}
