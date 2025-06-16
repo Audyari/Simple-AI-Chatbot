@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Optional, Union
+from typing import List, Dict
 from pathlib import Path
 from fpdf import FPDF  # Untuk ekspor PDF
 
@@ -16,42 +16,60 @@ class ChatHistory:
             storage_dir: Direktori untuk menyimpan file riwayat
         """
         self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(exist_ok=True)
     
     def _get_filename(self, extension: str = "json") -> str:
         """Membuat nama file berdasarkan timestamp saat ini."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"chat_{timestamp}.{extension}"
     
-    def save_chat(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
+    def save_chat(self, messages: List[Dict], session_name: str = None) -> str:
         """
         Menyimpan riwayat chat ke file JSON.
         
         Args:
-            messages: Daftar pesan dalam format [{"role": "user", "content": "..."}, ...]
+            messages: Daftar pesan untuk disimpan
             session_name: Nama sesi (opsional)
             
         Returns:
             Path ke file yang disimpan
         """
-        if not messages:
-            raise ValueError("Tidak ada pesan untuk disimpan")
+        try:
+            # Buat direktori jika belum ada
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
             
-        data = {
-            "session_name": session_name or "Unnamed Session",
-            "created_at": datetime.now().isoformat(),
-            "messages": messages
-        }
-        
-        filename = self._get_filename("json")
-        filepath = self.storage_dir / filename
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            # Buat nama file default jika tidak disediakan
+            if not session_name:
+                session_name = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
-        return str(filepath)
+            # Pastikan nama file aman
+            safe_name = "".join(c if c.isalnum() or c in ' _-.' else '_' for c in session_name)
+            safe_name = safe_name.strip()
+            
+            # Jika nama file sudah ada, tambahkan timestamp
+            file_path = self.storage_dir / f"{safe_name}.json"
+            counter = 1
+            while file_path.exists():
+                file_path = self.storage_dir / f"{safe_name}_{counter}.json"
+                counter += 1
+            
+            # Siapkan data untuk disimpan
+            chat_data = {
+                'session_name': safe_name,
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'messages': messages
+            }
+            
+            # Simpan ke file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(chat_data, f, ensure_ascii=False, indent=2)
+                
+            return str(file_path)
+            
+        except Exception as e:
+            print(f"Error saving chat: {e}")
+            return ""
     
-    def export_to_txt(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
+    def export_to_txt(self, messages: List[Dict], session_name: str = None) -> str:
         """
         Ekspor chat ke file teks.
         
@@ -79,7 +97,7 @@ class ChatHistory:
                 
         return str(filepath)
     
-    def export_to_pdf(self, messages: List[Dict[str, str]], session_name: str = None) -> str:
+    def export_to_pdf(self, messages: List[Dict], session_name: str = None) -> str:
         """
         Ekspor chat ke file PDF.
         
@@ -135,31 +153,131 @@ class ChatHistory:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     
-    def list_sessions(self, file_type: str = "json") -> List[Dict]:
+    def list_sessions(self) -> List[Dict]:
         """
-        Mendapatkan daftar semua sesi chat yang tersimpan.
+        Mendapatkan daftar sesi chat yang tersimpan.
         
-        Args:
-            file_type: Jenis file yang akan dicari (json/txt/pdf)
-            
         Returns:
-            Daftar dictionary berisi info sesi
+            Daftar kamus berisi informasi sesi
         """
         sessions = []
-        for file in self.storage_dir.glob(f"*.{file_type}"):
+        for file_path in self.storage_dir.glob('*.json'):
             try:
-                file_stat = file.stat()
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
                 sessions.append({
-                    "filepath": str(file),
-                    "filename": file.name,
-                    "created_at": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
-                    "size_kb": file_stat.st_size / 1024,
-                    "type": file_type.upper()
+                    'session_name': data.get('session_name', 'Sesi Tanpa Nama'),
+                    'created_at': data.get('created_at', 'Tidak Diketahui'),
+                    'filepath': str(file_path),
+                    'message_count': len(data.get('messages', []))
                 })
-            except Exception as e:
-                print(f"Error processing {file}: {e}")
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Error reading {file_path}: {e}")
+                continue
+        
+        # Urutkan berdasarkan waktu pembuatan (terbaru dulu)
+        sessions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return sessions
+    
+    def search_messages(self, query: str, session_file: str = None, case_sensitive: bool = False) -> List[Dict]:
+        """
+        Mencari pesan yang mengandung teks tertentu.
+        
+        Args:
+            query: Teks yang ingin dicari
+            session_file: File sesi spesifik (opsional)
+            case_sensitive: Pencarian case-sensitive
+            
+        Returns:
+            List pesan yang cocok dengan query
+        """
+        results = []
+        files_to_search = []
+        
+        # Tentukan file yang akan dicari
+        if session_file:
+            if not session_file.endswith('.json'):
+                session_file += '.json'
+            file_path = self.storage_dir / session_file
+            if file_path.exists():
+                files_to_search.append(file_path)
+        else:
+            # Cari di semua file JSON
+            files_to_search = list(self.storage_dir.glob('*.json'))
+        
+        # Lakukan pencarian
+        for file_path in files_to_search:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                # Dapatkan nama sesi
+                session_name = data.get('session_name', 'Unnamed Session')
+                created_at = data.get('created_at', 'Unknown')
+                
+                # Cari di setiap pesan
+                for msg in data.get('messages', []):
+                    content = msg.get('content', '')
+                    role = msg.get('role', 'unknown')
+                    
+                    # Lakukan pencarian
+                    search_content = content if case_sensitive else content.lower()
+                    search_query = query if case_sensitive else query.lower()
+                    
+                    if search_query in search_content:
+                        results.append({
+                            'session': session_name,
+                            'session_file': str(file_path.name),
+                            'created_at': created_at,
+                            'role': role,
+                            'content': content,
+                            'snippet': self._get_snippet(content, query, case_sensitive)
+                        })
+                        
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Error processing {file_path}: {e}")
                 continue
                 
-        # Urutkan berdasarkan waktu pembuatan (terbaru dulu)
-        sessions.sort(key=lambda x: x["created_at"], reverse=True)
-        return sessions
+        return results
+    
+    def _get_snippet(self, content: str, query: str, case_sensitive: bool = False, context_words: int = 10) -> str:
+        """
+        Mendapatkan potongan teks di sekitar kata kunci.
+        
+        Args:
+            content: Teks lengkap
+            query: Kata kunci yang dicari
+            case_sensitive: Pencarian case-sensitive
+            context_words: Jumlah kata di sekitar kata kunci
+            
+        Returns:
+            Potongan teks dengan kata kunci yang disorot
+        """
+        if not content or not query:
+            return ""
+            
+        content_search = content if case_sensitive else content.lower()
+        query_search = query if case_sensitive else query.lower()
+        
+        idx = content_search.find(query_search)
+        if idx == -1:
+            return ""
+            
+        # Temukan awal dan akhir potongan teks
+        start = max(0, content.rfind(' ', 0, idx - 1) + 1)
+        end = len(content)
+        
+        # Potong teks
+        snippet = content[start:end]
+        
+        # Potong ke jumlah kata yang diinginkan
+        words = snippet.split()
+        if len(words) > context_words * 2:
+            words = words[:context_words] + ['...'] + words[-context_words:]
+            snippet = ' '.join(words)
+        
+        # Sorot kata kunci
+        snippet = snippet.replace(query, f"**{query}**")
+        
+        return snippet

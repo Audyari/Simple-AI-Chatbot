@@ -125,6 +125,34 @@ class Chatbot:
             print(f"{Fore.RED}Gagal mengekspor chat: {str(e)}{Style.RESET_ALL}")
             return ""
     
+    def search_chat_history(self, query: str, session_file: str = None, case_sensitive: bool = False) -> List[Dict]:
+        """
+        Mencari pesan dalam riwayat chat.
+        
+        Args:
+            query: Teks yang ingin dicari
+            session_file: File sesi spesifik (opsional)
+            case_sensitive: Pencarian case-sensitive
+            
+        Returns:
+            List hasil pencarian
+        """
+        if not query:
+            print(f"{Fore.YELLOW}Masukkan kata kunci pencarian.{Style.RESET_ALL}")
+            return []
+            
+        try:
+            results = self.history.search_messages(
+                query=query,
+                session_file=session_file,
+                case_sensitive=case_sensitive
+            )
+            return results
+            
+        except Exception as e:
+            print(f"{Fore.RED}Gagal melakukan pencarian: {str(e)}{Style.RESET_ALL}")
+            return []
+    
     def chat_loop(self):
         """Loop chat interaktif."""
         print(f"\n{Fore.CYAN}=== Selamat datang di AI Assistant ==={Style.RESET_ALL}")
@@ -134,6 +162,8 @@ class Chatbot:
         print(f"- {Fore.GREEN}daftar{Style.RESET_ALL} - Lihat daftar sesi tersimpan")
         print(f"- {Fore.GREEN}export txt{Style.RESET_ALL} - Ekspor chat ke file teks")
         print(f"- {Fore.GREEN}export pdf{Style.RESET_ALL} - Ekspor chat ke file PDF")
+        print(f"- {Fore.GREEN}cari <kata kunci>{Style.RESET_ALL} - Cari dalam riwayat chat")
+        print(f"- {Fore.GREEN}cari di <nama file> <kata kunci>{Style.RESET_ALL} - Cari dalam file tertentu")
         
         while True:
             try:
@@ -176,6 +206,35 @@ class Chatbot:
                         self.export_chat(export_cmd[1])
                     else:
                         print(f"{Fore.YELLOW}Format ekspor tidak valid. Gunakan 'export txt' atau 'export pdf'.{Style.RESET_ALL}")
+                
+                elif user_input.lower().startswith('cari '):
+                    # Parse perintah pencarian
+                    parts = user_input.split(maxsplit=2)
+                    
+                    if len(parts) >= 3 and parts[1].lower() == 'di':
+                        # Format: cari di <nama file> <kata kunci>
+                        session_file = parts[2] if len(parts) > 2 else None
+                        search_query = parts[3] if len(parts) > 3 else ""
+                        results = self.search_chat_history(
+                            query=search_query,
+                            session_file=session_file
+                        )
+                    else:
+                        # Format: cari <kata kunci>
+                        search_query = parts[1] if len(parts) > 1 else ""
+                        results = self.search_chat_history(query=search_query)
+                    
+                    # Tampilkan hasil pencarian
+                    if not results:
+                        print(f"{Fore.YELLOW}Tidak ditemukan hasil untuk '{search_query}'.{Style.RESET_ALL}")
+                    else:
+                        print(f"\n{Fore.CYAN}=== Hasil Pencarian: '{search_query}' ({len(results)} ditemukan) ==={Style.RESET_ALL}")
+                        for i, result in enumerate(results, 1):
+                            role = "Anda" if result.get('role') == 'user' else "Asisten"
+                            session_name = result.get('session', 'Sesi Tanpa Nama')
+                            print(f"\n{Fore.YELLOW}{i}. [{session_name} - {role}]{Style.RESET_ALL}")
+                            print(f"   {result.get('snippet', 'Tidak ada konten')}")
+                            print(f"   File: {result.get('session_file', 'tidak_terdeteksi.json')}")
                 
                 # Jika bukan perintah khusus, anggap sebagai pesan chat
                 else:
