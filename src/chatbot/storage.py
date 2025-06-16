@@ -1,9 +1,11 @@
 import json
 import os
 from datetime import datetime
-from typing import List, Dict
 from pathlib import Path
-from fpdf import FPDF  # Untuk ekspor PDF
+from typing import List, Dict, Optional, Union
+from fpdf import FPDF
+
+from .config import Theme, Icons
 
 class ChatHistory:
     """Kelas untuk menangani penyimpanan dan ekspor riwayat chat."""
@@ -16,11 +18,19 @@ class ChatHistory:
             storage_dir: Direktori untuk menyimpan file riwayat
         """
         self.storage_dir = Path(storage_dir)
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_filename(self, extension: str = "json") -> str:
         """Membuat nama file berdasarkan timestamp saat ini."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"chat_{timestamp}.{extension}"
+    
+    def _sanitize_filename(self, name: str) -> str:
+        """Membersihkan nama file dari karakter yang tidak valid."""
+        invalid_chars = '<>:"/\\|?*' + ''.join(chr(i) for i in range(32))
+        for char in invalid_chars:
+            name = name.replace(char, '_')
+        return name.strip()
     
     def save_chat(self, messages: List[Dict], session_name: str = None) -> str:
         """
@@ -33,152 +43,157 @@ class ChatHistory:
         Returns:
             Path ke file yang disimpan
         """
+        if not messages:
+            raise ValueError("Tidak ada pesan untuk disimpan")
+        
+        # Buat nama file yang aman
+        safe_name = self._sanitize_filename(session_name) if session_name else ""
+        filename = f"{safe_name}_{self._get_filename()}" if safe_name else self._get_filename()
+        filepath = self.storage_dir / filename
+        
+        # Pastikan nama file unik
+        counter = 1
+        while filepath.exists():
+            filename = f"{safe_name}_{counter}_{self._get_filename()}" if safe_name else f"chat_{counter}_{self._get_filename()}"
+            filepath = self.storage_dir / filename
+            counter += 1
+        
+        # Siapkan data untuk disimpan
+        chat_data = {
+            "session_name": session_name or "Sesi Tanpa Nama",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message_count": len(messages),
+            "messages": messages
+        }
+        
+        # Simpan ke file
         try:
-            # Buat direktori jika belum ada
-            self.storage_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Buat nama file default jika tidak disediakan
-            if not session_name:
-                session_name = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            # Pastikan nama file aman
-            safe_name = "".join(c if c.isalnum() or c in ' _-.' else '_' for c in session_name)
-            safe_name = safe_name.strip()
-            
-            # Jika nama file sudah ada, tambahkan timestamp
-            file_path = self.storage_dir / f"{safe_name}.json"
-            counter = 1
-            while file_path.exists():
-                file_path = self.storage_dir / f"{safe_name}_{counter}.json"
-                counter += 1
-            
-            # Siapkan data untuk disimpan
-            chat_data = {
-                'session_name': safe_name,
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'messages': messages
-            }
-            
-            # Simpan ke file
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(chat_data, f, ensure_ascii=False, indent=2)
-                
-            return str(file_path)
-            
+            return str(filepath)
         except Exception as e:
-            print(f"Error saving chat: {e}")
-            return ""
+            raise Exception(f"Gagal menyimpan chat: {str(e)}")
     
-    def export_to_txt(self, messages: List[Dict], session_name: str = None) -> str:
+    def load_chat(self, filepath: Union[str, Path]) -> Dict:
         """
-        Ekspor chat ke file teks.
+        Memuat riwayat chat dari file.
         
         Args:
-            messages: Daftar pesan
-            session_name: Nama sesi
+            filepath: Path ke file yang akan dimuat
             
         Returns:
-            Path ke file TXT yang dihasilkan
+            Data chat yang dimuat
         """
-        if not messages:
-            raise ValueError("Tidak ada pesan untuk diekspor")
-            
-        filename = self._get_filename("txt")
-        filepath = self.storage_dir / filename
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f"=== {session_name or 'Chat Export'} ===\n")
-            f.write(f"Dibuat pada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 40 + "\n\n")
-            
-            for msg in messages:
-                role = "Anda" if msg["role"] == "user" else "Asisten"
-                f.write(f"{role}: {msg['content']}\n\n")
-                
-        return str(filepath)
-    
-    def export_to_pdf(self, messages: List[Dict], session_name: str = None) -> str:
-        """
-        Ekspor chat ke file PDF.
-        
-        Args:
-            messages: Daftar pesan
-            session_name: Nama sesi
-            
-        Returns:
-            Path ke file PDF yang dihasilkan
-        """
-        if not messages:
-            raise ValueError("Tidak ada pesan untuk diekspor")
-            
-        filename = self._get_filename("pdf")
-        filepath = self.storage_dir / filename
-        
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        
-        # Set font
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, session_name or "Chat Export", 0, 1, 'C')
-        
-        pdf.set_font("Arial", '', 10)
-        pdf.cell(0, 8, f"Dibuat pada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1, 'C')
-        pdf.ln(10)
-        
-        # Atur style untuk pesan
-        pdf.set_font("Arial", 'B', 12)
-        
-        for msg in messages:
-            role = "Anda" if msg["role"] == "user" else "Asisten"
-            
-            # Header pesan
-            pdf.set_fill_color(240, 240, 240)
-            pdf.cell(0, 8, f"{role}:", 0, 1, 'L', 1)
-            
-            # Isi pesan
-            pdf.set_font("Arial", '', 11)
-            pdf.multi_cell(0, 7, msg["content"])
-            pdf.ln(3)
-        
-        pdf.output(str(filepath))
-        return str(filepath)
-    
-    def load_chat(self, filepath: str) -> Dict:
-        """Memuat riwayat chat dari file."""
-        filepath = Path(filepath)
-        if not filepath.exists():
-            raise FileNotFoundError(f"File tidak ditemukan: {filepath}")
-            
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            raise ValueError("File tidak valid atau korup")
+        except Exception as e:
+            raise Exception(f"Gagal memuat chat: {str(e)}")
     
     def list_sessions(self) -> List[Dict]:
         """
         Mendapatkan daftar sesi chat yang tersimpan.
         
         Returns:
-            Daftar kamus berisi informasi sesi
+            Daftar dictionary berisi informasi sesi
         """
         sessions = []
-        for file_path in self.storage_dir.glob('*.json'):
+        
+        for filepath in self.storage_dir.glob("*.json"):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     
                 sessions.append({
-                    'session_name': data.get('session_name', 'Sesi Tanpa Nama'),
-                    'created_at': data.get('created_at', 'Tidak Diketahui'),
-                    'filepath': str(file_path),
-                    'message_count': len(data.get('messages', []))
+                    "session_name": data.get("session_name", "Sesi Tanpa Nama"),
+                    "created_at": data.get("created_at", "Tidak Diketahui"),
+                    "message_count": data.get("message_count", 0),
+                    "filepath": str(filepath),
+                    "filename": filepath.name
                 })
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error reading {file_path}: {e}")
+            except (json.JSONDecodeError, KeyError):
                 continue
         
         # Urutkan berdasarkan waktu pembuatan (terbaru dulu)
         sessions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return sessions
+    
+    def export_to_txt(self, messages: List[Dict], session_name: str = None) -> str:
+        """
+        Mengekspor chat ke file teks.
+        
+        Args:
+            messages: Daftar pesan untuk diekspor
+            session_name: Nama sesi (opsional)
+            
+        Returns:
+            Path ke file yang diekspor
+        """
+        safe_name = self._sanitize_filename(session_name) if session_name else "export"
+        filename = f"{safe_name}_{self._get_filename('txt')}"
+        filepath = self.storage_dir / filename
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"=== Ekspor Chat ===\n")
+            f.write(f"Sesi: {session_name or 'Tidak Diketahui'}\n")
+            f.write(f"Tanggal: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 40 + "\n\n")
+            
+            for msg in messages:
+                role = "Anda" if msg.get('role') == 'user' else "Asisten"
+                content = msg.get('content', '').replace('\n', '\n    ')
+                f.write(f"{role}:\n    {content}\n\n")
+        
+        return str(filepath)
+    
+    def export_to_pdf(self, messages: List[Dict], session_name: str = None) -> str:
+        """
+        Mengekspor chat ke file PDF.
+        
+        Args:
+            messages: Daftar pesan untuk diekspor
+            session_name: Nama sesi (opsional)
+            
+        Returns:
+            Path ke file PDF yang dihasilkan
+        """
+        safe_name = self._sanitize_filename(session_name) if session_name else "export"
+        filename = f"{safe_name}_{self._get_filename('pdf')}"
+        filepath = self.storage_dir / filename
+        
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Tambahkan judul
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 10, 'Ekspor Chat', 0, 1, 'C')
+        
+        # Tambahkan metadata
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(0, 10, f'Sesi: {session_name or "Tidak Diketahui"}', 0, 1)
+        pdf.cell(0, 10, f'Tanggal: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', 0, 1)
+        pdf.ln(10)
+        
+        # Tambahkan isi chat
+        pdf.set_font('Arial', '', 12)
+        for msg in messages:
+            role = "Anda" if msg.get('role') == 'user' else "Asisten"
+            content = msg.get('content', '')
+            
+            # Tambahkan peran dengan tebal
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 10, f"{role}:", 0, 1)
+            
+            # Tambahkan konten dengan format normal
+            pdf.set_font('Arial', '', 12)
+            pdf.multi_cell(0, 10, content)
+            pdf.ln(5)
+        
+        # Simpan file
+        pdf.output(str(filepath))
+        return str(filepath)
     
     def search_messages(self, query: str, session_file: str = None, case_sensitive: bool = False) -> List[Dict]:
         """
@@ -194,6 +209,10 @@ class ChatHistory:
         """
         results = []
         files_to_search = []
+        
+        # Pastikan direktori ada
+        if not self.storage_dir.exists():
+            return results
         
         # Tentukan file yang akan dicari
         if session_file:
@@ -213,12 +232,15 @@ class ChatHistory:
                     data = json.load(f)
                     
                 # Dapatkan nama sesi
-                session_name = data.get('session_name', 'Unnamed Session')
-                created_at = data.get('created_at', 'Unknown')
+                session_name = data.get('session_name', 'Sesi Tanpa Nama')
+                created_at = data.get('created_at', 'Tidak Diketahui')
                 
                 # Cari di setiap pesan
                 for msg in data.get('messages', []):
                     content = msg.get('content', '')
+                    if not isinstance(content, str):
+                        content = str(content)
+                        
                     role = msg.get('role', 'unknown')
                     
                     # Lakukan pencarian
@@ -232,52 +254,76 @@ class ChatHistory:
                             'created_at': created_at,
                             'role': role,
                             'content': content,
-                            'snippet': self._get_snippet(content, query, case_sensitive)
+                            'snippet': self._get_snippet(content, query, case_sensitive) or content[:100] + '...'
                         })
                         
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error processing {file_path}: {e}")
+            except (json.JSONDecodeError, KeyError, IOError) as e:
+                print(f"{Theme.ERROR}Error processing {file_path}: {e}{Style.RESET_ALL}" if 'Theme' in globals() else f"Error processing {file_path}: {e}")
                 continue
                 
         return results
     
     def _get_snippet(self, content: str, query: str, case_sensitive: bool = False, context_words: int = 10) -> str:
         """
-        Mendapatkan potongan teks di sekitar kata kunci.
+        Menghasilkan potongan teks dengan kata kunci yang disorot.
         
         Args:
             content: Teks lengkap
             query: Kata kunci yang dicari
             case_sensitive: Pencarian case-sensitive
-            context_words: Jumlah kata di sekitar kata kunci
+            context_words: Jumlah kata di sekitar kata kunci yang akan ditampilkan
             
         Returns:
             Potongan teks dengan kata kunci yang disorot
         """
         if not content or not query:
-            return ""
+            return content or ""
             
-        content_search = content if case_sensitive else content.lower()
-        query_search = query if case_sensitive else query.lower()
+        # Normalisasi teks dan query untuk pencarian
+        text = content if case_sensitive else content.lower()
+        search_term = query if case_sensitive else query.lower()
         
-        idx = content_search.find(query_search)
-        if idx == -1:
-            return ""
+        # Cari posisi pertama kemunculan query
+        pos = text.find(search_term)
+        if pos == -1:
+            return content[:100] + '...' if len(content) > 100 else content
             
-        # Temukan awal dan akhir potongan teks
-        start = max(0, content.rfind(' ', 0, idx - 1) + 1)
-        end = len(content)
+        # Hitung batas awal dan akhir
+        start = max(0, content.rfind(' ', 0, pos - 1) + 1)
+        end = min(len(content), content.find(' ', pos + len(query)) + 1)
         
-        # Potong teks
-        snippet = content[start:end]
+        # Ambil konteks sekitar
+        words = content.split()
+        query_words = query.split()
         
-        # Potong ke jumlah kata yang diinginkan
-        words = snippet.split()
-        if len(words) > context_words * 2:
-            words = words[:context_words] + ['...'] + words[-context_words:]
-            snippet = ' '.join(words)
+        # Cari semua kemunculan query
+        matches = []
+        for i in range(len(words) - len(query_words) + 1):
+            match = True
+            for j in range(len(query_words)):
+                word = words[i + j].lower() if not case_sensitive else words[i + j]
+                if word != (query_words[j].lower() if not case_sensitive else query_words[j]):
+                    match = False
+                    break
+            if match:
+                matches.append(i)
         
-        # Sorot kata kunci
-        snippet = snippet.replace(query, f"**{query}**")
+        if not matches:
+            return content[:100] + '...' if len(content) > 100 else content
         
-        return snippet
+        # Ambil konteks sekitar setiap kemunculan
+        snippets = []
+        for idx in matches:
+            start_idx = max(0, idx - context_words)
+            end_idx = min(len(words), idx + len(query_words) + context_words)
+            snippet = ' '.join(words[start_idx:end_idx])
+            
+            # Sorot query dalam snippet
+            for i in range(idx, idx + len(query_words)):
+                if i < len(words):
+                    words[i] = f"**{words[i]}**"
+            
+            snippets.append(snippet)
+        
+        # Gabungkan semua snippet dengan elipsis
+        return "... " + " ... ".join(snippets) + " ..."

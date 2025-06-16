@@ -1,5 +1,4 @@
 google-generativeai>=0.3.0
 python-dotenv>=1.0.0
 colorama>=0.4.6  # Untuk warna di terminal
-requests>=2.31.0
-fpdf>=1.7.2  # Untuk ekspor ke PDF
+fpdf2>=2.7.0  # Untuk ekspor ke PDF
